@@ -2,6 +2,84 @@ provider "aws" {
   region = "us-west-2"
 }
 
+resource "aws_iam_user" "admin-user" {
+  name = var.iam_user_admin_name
+  path = "/system/"
+  tags = {
+    "Description" = "Admin Lead"
+    "Role" = "admin"
+  }
+}
+
+resource "aws_iam_policy" "admin-user-policy" {
+  name        = var.iam_user_admin_policy_name
+  description = var.iam_user_admin_policy_name.description
+  policy      = file("admin-policy.json")
+  
+}
+
+resource "aws_iam_user_policy_attachment" "admin-user-policy-attachment" {
+  user       = aws_iam_user.admin-user.name
+  policy_arn = aws_iam_policy.admin-user-policy.arn
+}
+
+resource "aws_s3_bucket" "image" {
+  bucket = var.aws_s3_bucket
+
+  tags = var.aws_s3_bucket_tag
+}
+
+resource "aws_s3_bucket_object" "sample_image" {
+  bucket = aws_s3_bucket.image.id
+  key    = "sample-image.jpg"
+  source = "images/sample-image.jpg"
+  acl    = "private"
+  
+}
+
+data "aws_iam_group" "administrators" {
+  group_name = "Administrators"
+  
+}
+
+resource "aws_s3_bucket_policy" "image_policy" {
+  bucket = aws_s3_bucket.image.id
+
+  policy = file("s3-image-policy.json")
+  
+}
+
+resource "aws_dynamodb_table" "app_table" {
+  name         = var.aws_dynamodb_table
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "AppID"
+
+  attribute {
+    name = "AppID"
+    type = "S"
+  }
+
+  tags = {
+    Environment = "Development"
+    Name        = "AppDynamoDBTable"
+  }
+  
+}
+
+resource "aws_dynamodb_table_item" "app_table_item" {
+  table_name = aws_dynamodb_table.app_table.name
+  hash_key   = aws_dynamodb_table.app_table.hash_key
+
+    item = <<EOF
+        {
+          "AppID": {"S": "app-001"},
+          "AppName": {"S": "MyFirstApp"},
+          "Version": {"S": "1.0.0"} 
+          
+        }
+  EOF
+}
+
 data "aws_ami" "ubuntu" {
   most_recent = true
 
