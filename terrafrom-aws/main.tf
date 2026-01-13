@@ -97,17 +97,84 @@ data "aws_ami" "ubuntu" {
   
 }
 
+
 resource "aws_instance" "app_server" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 
   subnet_id = module.vpc.public_subnets[0]
-  vpc_security_group_ids = [module.vpc.default_security_group_ids]
+  vpc_security_group_ids = [aws_security_group.app_server_sg.id]
+
+  provisioner "local-exec" {
+    command = "echo 'Instance ${self.id} with IP ${self.public_ip} created' >> instance_info.txt"
+    
+  }
+
+  provisioner "local-exec" {
+    on_failure = fail
+    command    = "echo 'Instance creation failed' >> instance_info.txt"
+    
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "echo 'Instance ${self.id} is being destroyed' >> instance_info.txt"
+    
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo apt-get update -y",
+      "sudo apt-get install -y apache2",
+      "sudo systemctl start apache2",
+      "sudo systemctl enable apache2"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/id_rsa")
+      host        = self.public_ip
+    }
+    
+  }
 
   tags = {
     Name = var.instance_name
   }
   
+}
+
+resource "aws_key_pair" "app_server_key" {
+  key_name   = "app-server-key"
+  public_key = file("~/.ssh/id_rsa.pub")
+  
+}
+
+resource "aws_security_group" "app_server_sg" {
+  name        = "app-server-sg"
+  description = "Allow HTTP and SSH traffic"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 module "vpc" {
